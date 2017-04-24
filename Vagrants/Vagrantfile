@@ -1,0 +1,55 @@
+# -*- mode: ruby -*-
+# vi: set ft=ruby :
+# Author: Hoang Cong Phuoc
+
+nodes = [
+	{:hostname => 'ansible-server', :ip => '192.168.1.7' , :box => 'xenial64', :mem => '1024', :cpu => '1'},
+	{:hostname => 'k8s-master'    , :ip => '192.168.1.11', :box => 'xenial64', :mem => '2048', :cpu => '1'},
+	{:hostname => 'k8s-minion1'   , :ip => '192.168.1.21', :box => 'xenial64', :mem => '2048', :cpu => '1'},
+	{:hostname => 'k8s-minion2'   , :ip => '192.168.1.22', :box => 'xenial64', :mem => '2048', :cpu => '1'}
+]
+
+
+Vagrant.configure("2") do |config|
+	nodes.each do |node|
+		config.vm.define node[:hostname] do |nodeconfig|
+			nodeconfig.vm.box = 'ubuntu/xenial64'
+			nodeconfig.vm.hostname = node[:hostname]
+			nodeconfig.vm.network :private_network, ip: node[:ip]
+		
+			nodeconfig.vm.provider 'virtualbox' do |vb|
+				vb.customize ['modifyvm', :id, '--memory', node[:mem]]
+				vb.customize ['modifyvm', :id, '--cpus', node[:cpu]]
+			
+			nodeconfig.vm.provision 'shell', inline: <<-SHELL
+				apt-get update -y
+				apt-get install python-minimal -y
+				echo 'ubuntu:password' | sudo chpasswd
+			SHELL
+			end
+		end
+	end
+	
+	config.vm.define 'ansible-server' do |ansibleconfig|
+		ansibleconfig.vm.provision 'shell', inline: <<-SHELL
+			apt-add-repository ppa:ansible/ansible -y
+			apt-get update -y
+			apt-get install ansible -y
+			
+			cat << EOF > /etc/ansible/hosts
+[server:children]
+k8s-master
+k8s-minion
+			
+[k8s-master]
+master1	ansible_ssh_host=192.168.1.11	ansible_user='ubuntu'	ansible_ssh_pass='password'	ansible_ssh_common_args='-o StrictHostKeyChecking=no'
+			
+[k8s-minion]
+minion1	ansible_ssh_host=192.168.1.21	ansible_user='ubuntu'	ansible_ssh_pass='password'	ansible_ssh_common_args='-o StrictHostKeyChecking=no'
+minion2	ansible_ssh_host=192.168.1.22	ansible_user='ubuntu'	ansible_ssh_pass='password'	ansible_ssh_common_args='-o StrictHostKeyChecking=no'
+EOF
+			
+		SHELL
+	end
+end
+
